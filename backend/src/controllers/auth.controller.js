@@ -8,7 +8,7 @@ import {
   setRefreshTokenCookie,
   clearRefreshTokenCookie,
 } from '../utils/jwt.js';
-import { sendVerificationEmail, sendPasswordResetEmail } from '../utils/email.js';
+import { sendVerificationEmail, sendPasswordResetEmail, sendPasswordChangedEmail } from '../utils/email.js';
 import { generateToken } from '../utils/generateCode.js';
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -267,6 +267,11 @@ export const resetPassword = async (req, res) => {
     user.passwordResetToken = undefined;
     user.passwordResetExpires = undefined;
     await user.save();
+
+    // Alert email — fire and forget
+    sendPasswordChangedEmail(user.email, user.name).catch((err) =>
+      console.error('Password change alert email failed:', err.message)
+    );
 
     res.json({ message: 'Password reset successfully. You can now log in.' });
   } catch (err) {
