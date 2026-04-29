@@ -3,7 +3,7 @@ import {
   createQuestion, getQuestions, getQuestion,
   updateQuestion, deleteQuestion, toggleBookmark,
 } from '../controllers/question.controller.js';
-import { protect } from '../middleware/auth.middleware.js';
+import { protect } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 

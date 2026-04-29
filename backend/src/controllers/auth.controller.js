@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
-import User from '../models/User.js';
+import User from '../models/User.model.js';
 import {
   signAccessToken,
   signRefreshToken,

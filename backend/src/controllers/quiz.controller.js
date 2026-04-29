@@ -1,6 +1,6 @@
-import Quiz from '../models/Quiz.js';
-import Question from '../models/Question.js';
-import QuizAttempt from '../models/QuizAttempt.js';
+import Quiz from '../models/Quiz.model.js';
+import Question from '../models/Question.model.js';
+import QuizAttempt from '../models/QuizAttempt.model.js';
 
 // ─── Create Quiz ──────────────────────────────────────────────────────────────
 export const createQuiz = async (req, res) => {

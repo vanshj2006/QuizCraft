@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useQuizStore } from '../store/quizStore';
-import { useQuestionStore } from '../store/questionStore';
+import { useQuizStore } from '../store/quizStore.js';
+import { useQuestionStore } from '../store/questionStore.js';
 import api from '../lib/axios';
 
 const EMPTY_QUESTION = {

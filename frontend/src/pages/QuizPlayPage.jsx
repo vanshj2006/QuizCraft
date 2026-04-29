@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuizStore } from '../store/quizStore';
+import { useQuizStore } from '../store/quizStore.js';
 
 export default function QuizPlayPage() {
   const { id } = useParams();

@@ -4,7 +4,7 @@ import {
   getQuiz, updateQuiz, deleteQuiz,
   publishQuiz, submitAttempt, addQuestionToQuiz,
 } from '../controllers/quiz.controller.js';
-import { protect } from '../middleware/auth.middleware.js';
+import { protect } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 

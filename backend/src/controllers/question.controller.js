@@ -1,4 +1,4 @@
-import Question from '../models/Question.js';
+import Question from '../models/Question.model.js';
 
 export const createQuestion = async (req, res) => {
   try {

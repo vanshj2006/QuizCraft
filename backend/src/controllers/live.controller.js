@@ -1,5 +1,5 @@
-import LiveSession from '../models/LiveSession.js';
-import Quiz from '../models/Quiz.js';
+import LiveSession from '../models/LiveSession.model.js';
+import Quiz from '../models/Quiz.model.js';
 import { generateSessionCode } from '../utils/generateCode.js';
 
 export const createSession = async (req, res) => {

@@ -1,5 +1,5 @@
-import User from '../models/User.js';
-import QuizAttempt from '../models/QuizAttempt.js';
+import User from '../models/User.model.js';
+import QuizAttempt from '../models/QuizAttempt.model.js';
 import { sendPasswordChangedEmail } from '../utils/email.js';
 
 export const getProfile = async (req, res) => {
