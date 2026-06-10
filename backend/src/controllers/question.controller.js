@@ -23,7 +23,17 @@ export const getQuestions = async (req, res) => {
     if (difficulty) filter.difficulty = difficulty;
     if (category) filter.category = category;
     if (tags) filter.tags = { $in: tags.split(',') };
-    if (search) filter.$text = { $search: search };
+    if (search) {
+      const regex = new RegExp(search, 'i');
+      const searchCond = { $or: [{ stem: regex }, { category: regex }, { tags: regex }] };
+      // merge with existing $or if present
+      if (filter.$or) {
+        filter.$and = [{ $or: filter.$or }, searchCond];
+        delete filter.$or;
+      } else {
+        Object.assign(filter, searchCond);
+      }
+    }
 
     const questions = await Question.find(filter)
       .populate('createdBy', 'name')

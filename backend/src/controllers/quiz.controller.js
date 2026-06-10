@@ -30,7 +30,9 @@ export const getPublicQuizzes = async (req, res) => {
     const { page = 1, limit = 12, category, search } = req.query;
     const filter = { visibility: 'public' };
     if (category) filter.category = category;
-    if (search) filter.$text = { $search: search };
+    if (search) {
+      filter.title = new RegExp(search, 'i');
+    }
 
     const quizzes = await Quiz.find(filter)
       .populate('createdBy', 'name avatar')

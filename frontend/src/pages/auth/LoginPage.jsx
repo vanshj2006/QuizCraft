@@ -74,11 +74,16 @@ export default function LoginPage() {
         </div>
 
         <div className="bg-surface-container border border-outline-variant/30 rounded-2xl p-8">
-          {error && (
-            <div className="mb-4 p-3 bg-error-container/20 border border-error/30 rounded-lg text-error text-body-sm">
+          <div
+            className={`overflow-hidden transition-all duration-300 ease-in-out ${
+              error ? 'max-h-20 opacity-100 mb-4' : 'max-h-0 opacity-0 mb-0'
+            }`}
+          >
+            <div className="p-3 bg-error-container/20 border border-error/30 rounded-lg text-error text-body-sm flex items-start gap-2">
+              <span className="material-symbols-outlined text-[16px] shrink-0 mt-0.5">error</span>
               {error}
             </div>
-          )}
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -87,7 +92,7 @@ export default function LoginPage() {
                 type="email"
                 required
                 value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                onChange={(e) => { setForm({ ...form, email: e.target.value }); setError(''); }}
                 className="w-full bg-surface-container-low border border-outline-variant/30 rounded-lg px-4 py-3 text-on-surface focus:border-primary-container focus:ring-1 focus:ring-primary-container/20 outline-none transition-all"
                 placeholder="you@example.com"
               />
@@ -99,7 +104,7 @@ export default function LoginPage() {
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  onChange={(e) => { setForm({ ...form, password: e.target.value }); setError(''); }}
                   className="w-full bg-surface-container-low border border-outline-variant/30 rounded-lg px-4 py-3 pr-11 text-on-surface focus:border-primary-container focus:ring-1 focus:ring-primary-container/20 outline-none transition-all"
                   placeholder="••••••••"
                 />

@@ -1,9 +1,9 @@
+import 'dotenv/config';
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
-import dotenv from 'dotenv';
 import { connectDB } from './config/db.js';
 import { setupSocketHandlers } from './socket/index.js';
 
@@ -14,8 +14,6 @@ import questionRoutes from './routes/question.routes.js';
 import liveRoutes from './routes/live.routes.js';
 import aiRoutes from './routes/ai.routes.js';
 import userRoutes from './routes/user.routes.js';
-
-dotenv.config();
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -61,4 +59,9 @@ connectDB().then(() => {
   httpServer.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });
+});
+
+// Prevent unhandled promise rejections from crashing the process
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection:', err?.message || err);
 });
