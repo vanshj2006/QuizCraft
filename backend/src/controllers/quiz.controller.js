@@ -175,3 +175,19 @@ export const addQuestionToQuiz = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+// ─── Remove Question from Quiz ────────────────────────────────────────────────
+export const removeQuestionFromQuiz = async (req, res) => {
+  try {
+    const quiz = await Quiz.findOne({ _id: req.params.id, createdBy: req.user._id });
+    if (!quiz) return res.status(404).json({ message: 'Quiz not found' });
+
+    quiz.questions = quiz.questions.filter(
+      (q) => q.toString() !== req.params.questionId
+    );
+    await quiz.save();
+    res.json({ quiz });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};

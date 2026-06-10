@@ -113,8 +113,8 @@ export const generateFullQuiz = async (req, res) => {
       questionsData.map((q) => ({ ...q, createdBy: req.user._id, aiGenerated: true, isPublic: makePublic }))
     );
     const quiz = await Quiz.create({
-      title: `AI Quiz: ${topic}`,
-      description: `AI-generated quiz about ${topic}`,
+      title: topic,
+      description: `Quiz about ${topic}`,
       category: category || topic,
       questions: savedQuestions.map((q) => q._id),
       createdBy: req.user._id,

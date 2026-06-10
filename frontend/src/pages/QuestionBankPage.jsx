@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuestionStore } from '../store/questionStore';
+import { ConfirmModal } from '../components/ConfirmModal';
 
 const DIFFICULTIES = ['', 'easy', 'medium', 'hard', 'expert'];
 const DIFF_COLORS = { easy: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', medium: 'text-orange-400 bg-orange-500/10 border-orange-500/20', hard: 'text-rose-400 bg-rose-500/10 border-rose-500/20', expert: 'text-purple-400 bg-purple-500/10 border-purple-500/20' };
@@ -8,18 +9,26 @@ export default function QuestionBankPage() {
   const { questions, total, pages, fetchQuestions, deleteQuestion } = useQuestionStore();
   const [filters, setFilters] = useState({ difficulty: '', category: '', search: '', page: 1, mine: false });
   const [showForm, setShowForm] = useState(false);
+  const [confirmState, setConfirmState] = useState({ message: '', onConfirm: null });
 
   useEffect(() => {
     fetchQuestions({ ...filters, mine: filters.mine ? 'true' : undefined });
   }, [filters]);
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this question?')) return;
-    await deleteQuestion(id);
+  const handleDelete = (id) => {
+    setConfirmState({
+      message: 'Delete this question? This cannot be undone.',
+      onConfirm: () => deleteQuestion(id),
+    });
   };
 
   return (
     <div className="flex min-h-full overflow-hidden">
+      <ConfirmModal
+        message={confirmState.message}
+        onConfirm={() => { confirmState.onConfirm?.(); setConfirmState({ message: '', onConfirm: null }); }}
+        onCancel={() => setConfirmState({ message: '', onConfirm: null })}
+      />
       {/* Filter Sidebar */}
       <aside className="w-64 bg-surface border-r border-slate-800 overflow-y-auto custom-scrollbar p-6 shrink-0">
         <div className="flex items-center justify-between mb-6">

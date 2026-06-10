@@ -1,14 +1,74 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuizStore } from '../store/quizStore';
+import { AlertModal, ConfirmModal } from '../components/ConfirmModal';
 
 const TABS = ['My Quizzes', 'Community'];
+
+function QuizCardMenu({ quiz, onDelete, onPublish, navigate }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative" onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={`w-7 h-7 flex items-center justify-center rounded-lg transition-all ${open ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-200 hover:bg-slate-700/60'}`}
+      >
+        <span className="material-symbols-outlined text-[18px]">more_vert</span>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-9 z-30 w-44 bg-slate-800 border border-slate-700/60 rounded-xl shadow-2xl py-1 overflow-hidden">
+          <button
+            onClick={() => { navigate(`/quizzes/${quiz._id}/edit`); setOpen(false); }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-200 hover:bg-slate-700/70 transition-colors text-left"
+          >
+            <span className="material-symbols-outlined text-[15px] text-slate-400">edit</span>
+            Edit
+          </button>
+          <button
+            onClick={() => { navigate(`/quizzes/${quiz._id}/play`); setOpen(false); }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-200 hover:bg-slate-700/70 transition-colors text-left"
+          >
+            <span className="material-symbols-outlined text-[15px] text-slate-400">play_circle</span>
+            Play
+          </button>
+          {quiz.visibility !== 'public' && (
+            <button
+              onClick={() => { onPublish(quiz._id); setOpen(false); }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-emerald-400 hover:bg-emerald-500/10 transition-colors text-left"
+            >
+              <span className="material-symbols-outlined text-[15px]">publish</span>
+              Publish
+            </button>
+          )}
+          <div className="h-px bg-slate-700/60 my-1" />
+          <button
+            onClick={() => { onDelete(quiz._id); setOpen(false); }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors text-left"
+          >
+            <span className="material-symbols-outlined text-[15px]">delete</span>
+            Delete
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function QuizzesPage() {
   const { myQuizzes, publicQuizzes, fetchMyQuizzes, fetchPublicQuizzes, deleteQuiz, publishQuiz } = useQuizStore();
   const [tab, setTab] = useState('My Quizzes');
   const [search, setSearch] = useState('');
   const navigate = useNavigate();
+  const [alertMsg, setAlertMsg] = useState('');
+  const [confirmState, setConfirmState] = useState({ message: '', onConfirm: null });
 
   useEffect(() => {
     fetchMyQuizzes();
@@ -19,23 +79,31 @@ export default function QuizzesPage() {
     q.title.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleDelete = async (id, e) => {
-    e.stopPropagation();
-    if (!confirm('Delete this quiz?')) return;
-    await deleteQuiz(id);
+  const handleDelete = (id, e) => {
+    if (e) e.stopPropagation();
+    setConfirmState({
+      message: 'Delete this quiz? This cannot be undone.',
+      onConfirm: () => deleteQuiz(id),
+    });
   };
 
   const handlePublish = async (id, e) => {
-    e.stopPropagation();
+    if (e) e.stopPropagation();
     try {
       await publishQuiz(id);
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to publish');
+      setAlertMsg(err.response?.data?.message || 'Failed to publish');
     }
   };
 
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto w-full space-y-8">
+      <AlertModal message={alertMsg} onClose={() => setAlertMsg('')} />
+      <ConfirmModal
+        message={confirmState.message}
+        onConfirm={() => { confirmState.onConfirm?.(); setConfirmState({ message: '', onConfirm: null }); }}
+        onCancel={() => setConfirmState({ message: '', onConfirm: null })}
+      />
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -83,43 +151,30 @@ export default function QuizzesPage() {
           <div
             key={quiz._id}
             onClick={() => navigate(tab === 'My Quizzes' ? `/quizzes/${quiz._id}/edit` : `/quizzes/${quiz._id}/play`)}
-            className="glass-panel rounded-xl overflow-hidden hover:scale-[1.02] transition-transform cursor-pointer group border-slate-800"
+            className="glass-panel rounded-xl hover:scale-[1.02] transition-transform cursor-pointer group border-slate-800"
           >
-            <div className="h-28 bg-slate-900 flex items-center justify-center relative overflow-hidden">
+            <div className="h-28 bg-slate-900 flex items-center justify-center relative overflow-hidden rounded-t-xl">
               <div className="absolute inset-0 opacity-10 abstract-node-bg" />
               <span className="material-symbols-outlined text-3xl text-primary opacity-50 group-hover:opacity-100 transition-opacity">quiz</span>
-              {quiz.isAiGenerated && (
-                <span className="absolute top-2 right-2 flex items-center gap-1 bg-secondary-container/20 text-secondary-fixed-dim text-[10px] font-bold px-2 py-0.5 rounded-full border border-secondary-container/30">
-                  <span className="material-symbols-outlined text-[10px]">auto_awesome</span> AI
-                </span>
-              )}
+
             </div>
             <div className="p-4 space-y-3">
-              <h4 className="font-bold text-white leading-tight">{quiz.title}</h4>
+              <div className="flex items-start justify-between gap-2">
+                <h4 className="font-bold text-white leading-tight">{quiz.title}</h4>
+                {tab === 'My Quizzes' && (
+                  <QuizCardMenu
+                    quiz={quiz}
+                    onDelete={handleDelete}
+                    onPublish={handlePublish}
+                    navigate={navigate}
+                  />
+                )}
+              </div>
               <p className="text-body-sm text-slate-500">{quiz.category} · {quiz.questions?.length || 0} Qs</p>
-              <div className="pt-2 border-t border-slate-800 flex justify-between items-center">
+              <div className="pt-2 border-t border-slate-800">
                 <span className={`text-label-caps ${quiz.visibility === 'public' ? 'text-tertiary' : quiz.visibility === 'draft' ? 'text-slate-500' : 'text-primary'}`}>
                   {quiz.visibility}
                 </span>
-                {tab === 'My Quizzes' && (
-                  <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                    {quiz.visibility !== 'public' && (
-                      <button
-                        onClick={(e) => handlePublish(quiz._id, e)}
-                        className="p-1.5 rounded-lg text-slate-500 hover:text-tertiary hover:bg-tertiary/10 transition-all"
-                        title="Publish"
-                      >
-                        <span className="material-symbols-outlined text-sm">publish</span>
-                      </button>
-                    )}
-                    <button
-                      onClick={(e) => handleDelete(quiz._id, e)}
-                      className="p-1.5 rounded-lg text-slate-500 hover:text-error hover:bg-error-container/20 transition-all"
-                    >
-                      <span className="material-symbols-outlined text-sm">delete</span>
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
           </div>
