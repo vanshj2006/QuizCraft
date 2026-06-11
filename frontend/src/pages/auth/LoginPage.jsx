@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 
 function EyeIcon({ open }) {
@@ -18,29 +18,47 @@ function EyeIcon({ open }) {
 export default function LoginPage() {
   const { login, googleLogin } = useAuthStore();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirectTo = searchParams.get('redirect') || '/dashboard';
+
   const [form, setForm] = useState({ email: '', password: '', rememberMe: false });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Wait for Google GSI script — it may load slightly after component mounts
   useEffect(() => {
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-    if (!clientId || !window.google) return;
-    window.google.accounts.id.initialize({
-      client_id: clientId,
-      callback: async (response) => {
-        setError('');
-        setLoading(true);
-        try {
-          await googleLogin(response.credential);
-          navigate('/dashboard');
-        } catch (err) {
-          setError(err.response?.data?.message || 'Google sign-in failed');
-        } finally {
-          setLoading(false);
-        }
-      },
-    });
+    if (!clientId) return;
+
+    const init = () => {
+      if (!window.google) return;
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: async (response) => {
+          setError('');
+          setLoading(true);
+          try {
+            await googleLogin(response.credential);
+            navigate(redirectTo);
+          } catch (err) {
+            setError(err.response?.data?.message || 'Google sign-in failed');
+          } finally {
+            setLoading(false);
+          }
+        },
+      });
+    };
+
+    if (window.google) {
+      init();
+    } else {
+      // Script not loaded yet — wait for it
+      const interval = setInterval(() => {
+        if (window.google) { init(); clearInterval(interval); }
+      }, 100);
+      return () => clearInterval(interval);
+    }
   }, []);
 
   const handleSubmit = async (e) => {
@@ -49,7 +67,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(form.email, form.password, form.rememberMe);
-      navigate('/dashboard');
+      navigate(redirectTo);
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed');
     } finally {
