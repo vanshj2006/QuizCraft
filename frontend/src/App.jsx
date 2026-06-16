@@ -26,6 +26,9 @@ import LiveLobbyPage from './pages/LiveLobbyPage';
 import LiveSessionPage from './pages/LiveSessionPage';
 import ProfilePage from './pages/ProfilePage';
 import LandingPage from './pages/LandingPage';
+import JoinPage from './pages/JoinPage';
+import LiveGamesPage from './pages/LiveGamesPage';
+import ResultsPage from './pages/ResultsPage';
 
 import AppLayout from './components/layout/AppLayout';
 import ProtectedRoute from './components/layout/ProtectedRoute';
@@ -57,6 +60,9 @@ export default function App() {
         {/* Landing */}
         <Route path="/" element={<GuestRoute><LandingPage /></GuestRoute>} />
 
+        {/* Public join page — no auth required */}
+        <Route path="/join" element={<JoinPage />} />
+
         {/* Auth */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
@@ -73,8 +79,10 @@ export default function App() {
             <Route path="/quizzes/:id/edit" element={<QuizCreatorPage />} />
             <Route path="/quizzes/:id/play" element={<QuizPlayPage />} />
             <Route path="/bank" element={<QuestionBankPage />} />
+            <Route path="/live-games" element={<LiveGamesPage />} />
             <Route path="/live/:code/lobby" element={<LiveLobbyPage />} />
             <Route path="/live/:code/session" element={<LiveSessionPage />} />
+            <Route path="/live/:code/results" element={<ResultsPage />} />
             <Route path="/profile" element={<ProfilePage />} />
           </Route>
         </Route>

@@ -5,6 +5,7 @@ const navItems = [
   { to: '/dashboard', icon: 'dashboard', label: 'Dashboard' },
   { to: '/quizzes', icon: 'quiz', label: 'Quizzes' },
   { to: '/bank', icon: 'account_balance', label: 'Bank' },
+  { to: '/live-games', icon: 'live_tv', label: 'Live Games' },
 ];
 
 export default function Sidebar() {

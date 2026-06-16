@@ -460,6 +460,187 @@ function AiGenerateModal({ open, onClose, quizMeta, questionDifficulty, onQuesti
   );
 }
 
+/* ── Host Live Modal ── */
+function HostLiveModal({ open, onClose, onConfirm, defaultTimePerQuestion }) {
+  const DURATION_PRESETS = [
+    { label: '15 min', value: 900 },
+    { label: '30 min', value: 1800 },
+    { label: '45 min', value: 2700 },
+    { label: '1 hr', value: 3600 },
+    { label: '1.5 hr', value: 5400 },
+    { label: '2 hr', value: 7200 },
+  ];
+
+  const [sessionDuration, setSessionDuration] = useState(1800); // default 30 min
+  const [customMinutes, setCustomMinutes] = useState('');
+  const [useCustom, setUseCustom] = useState(false);
+  const [isPublic, setIsPublic] = useState(false);
+  const [shuffleQuestions, setShuffleQuestions] = useState(false);
+  const [timePerQuestion, setTimePerQuestion] = useState(defaultTimePerQuestion || 30);
+  const [starting, setStarting] = useState(false);
+
+  if (!open) return null;
+
+  const effectiveDuration = useCustom
+    ? (parseInt(customMinutes, 10) || 0) * 60
+    : sessionDuration;
+
+  const isValid = effectiveDuration > 0 && timePerQuestion > 0;
+
+  const handleStart = async () => {
+    if (!isValid) return;
+    setStarting(true);
+    try {
+      await onConfirm({ sessionDuration: effectiveDuration, isPublic, settings: { timePerQuestion, shuffleQuestions } });
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const fmt = (secs) => {
+    const m = Math.floor(secs / 60);
+    const h = Math.floor(m / 60);
+    return h > 0 ? `${h}h ${m % 60}m` : `${m}m`;
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-surface-container border border-outline-variant/40 rounded-2xl shadow-2xl w-full max-w-md space-y-0 overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-outline-variant/20">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-tertiary/15 flex items-center justify-center">
+              <span className="material-symbols-outlined text-tertiary" style={{ fontVariationSettings: "'FILL' 1" }}>live_tv</span>
+            </div>
+            <h3 className="text-h3 font-bold text-on-surface">Host Live Session</h3>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-surface-variant text-on-surface-variant transition-all">
+            <span className="material-symbols-outlined text-sm">close</span>
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-5">
+          {/* Session Duration */}
+          <div className="space-y-3">
+            <label className="text-label-caps text-on-surface-variant flex items-center gap-1">
+              SESSION DURATION
+              <span className="text-error">*</span>
+            </label>
+            <p className="text-[11px] text-on-surface-variant -mt-1">How long participants have to complete the quiz</p>
+
+            {/* Preset grid */}
+            <div className="grid grid-cols-3 gap-2">
+              {DURATION_PRESETS.map((p) => (
+                <button
+                  key={p.value}
+                  onClick={() => { setSessionDuration(p.value); setUseCustom(false); }}
+                  className={`py-2.5 rounded-xl border font-bold text-body-sm transition-all ${
+                    !useCustom && sessionDuration === p.value
+                      ? 'bg-tertiary/20 border-tertiary/50 text-tertiary'
+                      : 'bg-surface-container-low border-outline-variant/30 text-on-surface-variant hover:border-outline-variant'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Custom input */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setUseCustom(true)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-body-sm font-medium transition-all ${
+                  useCustom
+                    ? 'bg-tertiary/20 border-tertiary/50 text-tertiary'
+                    : 'border-outline-variant/30 text-on-surface-variant hover:border-outline-variant'
+                }`}
+              >
+                <span className="material-symbols-outlined text-sm">edit</span>
+                Custom
+              </button>
+              {useCustom && (
+                <div className="flex items-center gap-2 flex-1">
+                  <input
+                    type="number"
+                    min={1}
+                    max={480}
+                    value={customMinutes}
+                    onChange={(e) => setCustomMinutes(e.target.value)}
+                    autoFocus
+                    className="w-20 bg-surface-container-low border border-tertiary/40 rounded-lg px-3 py-2 text-on-surface text-body-sm focus:border-tertiary outline-none transition-all text-center font-mono"
+                    placeholder="30"
+                  />
+                  <span className="text-on-surface-variant text-body-sm">minutes</span>
+                </div>
+              )}
+            </div>
+
+            {/* Duration summary */}
+            {effectiveDuration > 0 && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-tertiary/5 border border-tertiary/20 rounded-lg">
+                <span className="material-symbols-outlined text-tertiary text-[16px]">schedule</span>
+                <span className="text-body-sm text-tertiary font-medium">
+                  Participants get <strong>{fmt(effectiveDuration)}</strong> to complete the quiz
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Time per question */}
+          <div className="space-y-2">
+            <label className="text-label-caps text-on-surface-variant">TIME PER QUESTION (seconds)</label>
+            <input
+              type="number"
+              min={5}
+              max={300}
+              value={timePerQuestion}
+              onChange={(e) => setTimePerQuestion(Number(e.target.value))}
+              className="w-full bg-surface-container-low border border-outline-variant/30 rounded-lg px-3 py-2.5 text-on-surface text-body-sm focus:border-primary-container outline-none transition-all"
+            />
+          </div>
+
+          {/* Toggles */}
+          <div className="space-y-3">
+            {[
+              { key: 'isPublic', label: 'Public session', desc: 'Visible in the Live Games hub', value: isPublic, set: setIsPublic, icon: 'public' },
+              { key: 'shuffle', label: 'Shuffle questions', desc: 'Randomise question order', value: shuffleQuestions, set: setShuffleQuestions, icon: 'shuffle' },
+            ].map(({ key, label, desc, value, set, icon }) => (
+              <button
+                key={key}
+                onClick={() => set((v) => !v)}
+                className="w-full flex items-center justify-between p-3 rounded-xl border border-outline-variant/30 hover:bg-surface-container-low transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  <span className={`material-symbols-outlined text-[18px] ${value ? 'text-primary' : 'text-on-surface-variant'}`}>{icon}</span>
+                  <div className="text-left">
+                    <p className="text-body-sm font-medium text-on-surface">{label}</p>
+                    <p className="text-[11px] text-on-surface-variant">{desc}</p>
+                  </div>
+                </div>
+                <div className={`w-10 h-6 rounded-full transition-all relative ${value ? 'bg-primary-container' : 'bg-surface-container-high border border-outline-variant/40'}`}>
+                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm ${value ? 'left-5' : 'left-1'}`} />
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 pb-6">
+          <button
+            onClick={handleStart}
+            disabled={!isValid || starting}
+            className="w-full py-3 bg-tertiary text-on-tertiary font-bold rounded-xl hover:brightness-110 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>live_tv</span>
+            {starting ? 'Creating session...' : 'Start Live Session'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function QuizCreatorPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -473,6 +654,7 @@ export default function QuizCreatorPage() {
   const [saving, setSaving] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [bankModalOpen, setBankModalOpen] = useState(false);
+  const [hostLiveModalOpen, setHostLiveModalOpen] = useState(false);
 
   // Modal state
   const [alertMsg, setAlertMsg] = useState('');
@@ -617,6 +799,25 @@ export default function QuizCreatorPage() {
         alreadyAdded={savedQuestions.map((q) => q._id)}
         onAdd={handleAddFromBank}
         onRemove={handleRemoveFromBank}
+      />
+      <HostLiveModal
+        open={hostLiveModalOpen}
+        onClose={() => setHostLiveModalOpen(false)}
+        defaultTimePerQuestion={quizMeta.timeLimit}
+        onConfirm={async ({ sessionDuration, isPublic, settings }) => {
+          try {
+            const { data } = await api.post('/live/session', {
+              quizId: id,
+              sessionDuration,
+              isPublic,
+              settings,
+            });
+            setHostLiveModalOpen(false);
+            navigate(`/live/${data.code.replace(/\s+/g, '-')}/lobby`);
+          } catch (err) {
+            showAlert(err.response?.data?.message || 'Failed to start live session');
+          }
+        }}
       />
 
       {/* Top bar */}
@@ -916,14 +1117,7 @@ export default function QuizCreatorPage() {
           </button>
           {id && savedQuestions.length > 0 && (
             <button
-              onClick={async () => {
-                try {
-                  const { data } = await api.post('/live/session', { quizId: id, settings: { timePerQuestion: quizMeta.timeLimit } });
-                  navigate(`/live/${data.code.replace(' ', '-')}/lobby`);
-                } catch (err) {
-                  showAlert(err.response?.data?.message || 'Failed to start live session');
-                }
-              }}
+              onClick={() => setHostLiveModalOpen(true)}
               className="px-lg py-3 bg-tertiary text-on-tertiary rounded-xl font-bold hover:brightness-110 transition-all active:scale-95 flex items-center gap-2 text-body-sm"
             >
               <span className="material-symbols-outlined text-sm">live_tv</span>
