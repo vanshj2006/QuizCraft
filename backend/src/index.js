@@ -59,7 +59,8 @@ const PORT = process.env.PORT || 5000;
 connectDB().then(async () => {
   // Recover any active sessions that survived a restart
   await recoverActiveSessions(io);
-  httpServer.listen(PORT, () => {
+  // Bind to 0.0.0.0 so Render can route traffic to the container
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
   });
 });
