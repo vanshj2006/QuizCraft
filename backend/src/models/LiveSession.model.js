@@ -6,6 +6,7 @@ const participantSchema = new mongoose.Schema({
   socketId: { type: String },
   score: { type: Number, default: 0 },
   streak: { type: Number, default: 0 },
+  currentQuestionIndex: { type: Number, default: 0 }, // per-participant self-paced index
   answers: [{
     questionIndex: Number,
     answer: String,
@@ -24,11 +25,15 @@ const liveSessionSchema = new mongoose.Schema({
   participants: [participantSchema],
   status: {
     type: String,
-    enum: ['waiting', 'active', 'question', 'results', 'finished'],
+    enum: ['waiting', 'active', 'finished'],
     default: 'waiting',
   },
-  currentQuestionIndex: { type: Number, default: -1 },
+  isPublic: { type: Boolean, default: false },
+  currentQuestionIndex: { type: Number, default: -1 }, // global fallback
   questionStartTime: { type: Date },
+  sessionDuration: { type: Number, required: true }, // seconds — set by host
+  startedAt: { type: Date },                          // set on host:start
+  expiresAt: { type: Date },                          // startedAt + sessionDuration
   settings: {
     timePerQuestion: { type: Number, default: 30 },
     shuffleQuestions: { type: Boolean, default: false },

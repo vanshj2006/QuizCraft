@@ -1,229 +1,290 @@
 import LiveSession from '../models/LiveSession.model.js';
-import Quiz from '../models/Quiz.model.js';
+import * as liveService from '../services/liveSession.service.js';
 
 export const setupSocketHandlers = (io) => {
   io.on('connection', (socket) => {
     console.log(`🔌 Socket connected: ${socket.id}`);
 
-    // ─── Join Lobby ───────────────────────────────────────────────────────────
+    // ─── Ping (latency probe) ─────────────────────────────────────────────────
+    socket.on('ping', (cb) => {
+      if (typeof cb === 'function') cb();
+      else socket.emit('pong');
+    });
+
+    // ─── lobby:join ───────────────────────────────────────────────────────────
     socket.on('lobby:join', async ({ code, userId, guestName }) => {
       try {
-        const session = await LiveSession.findOne({ code }).populate('quiz');
-        if (!session || session.status === 'finished') {
+        const normalizedCode = code?.replace(/-/g, ' ');
+
+        // Fetch session from DB to check status
+        const session = await LiveSession.findOne({ code: normalizedCode })
+          .populate('quiz', 'title category')
+          .populate('host', 'name avatar');
+
+        if (!session) {
           return socket.emit('error', { message: 'Session not found or already ended' });
         }
 
-        socket.join(code);
-        socket.sessionCode = code;
-        socket.userId = userId;
+        // Block entry if session already finished or timer already expired
+        const now = Date.now();
+        const isExpired = session.expiresAt && new Date(session.expiresAt).getTime() <= now;
 
-        // Add participant if not already in
-        const existing = session.participants.find(
-          (p) => (userId && p.user?.toString() === userId) || p.socketId === socket.id
-        );
-
-        if (!existing) {
-          session.participants.push({
-            user: userId || undefined,
-            guestName: guestName || 'Guest',
-            socketId: socket.id,
-            isReady: false,
-          });
-          await session.save();
-        } else {
-          existing.socketId = socket.id;
-          await session.save();
+        if (session.status === 'finished' || isExpired) {
+          return socket.emit('session:ended', { reason: 'session_finished' });
         }
 
-        const participantCount = session.participants.length;
-        io.to(code).emit('lobby:update', {
-          participants: session.participants,
-          count: participantCount,
-        });
+        // Add to Socket.io room
+        socket.join(normalizedCode);
+        socket.sessionCode = normalizedCode;
+        socket.userId = userId;
 
+        // Upsert participant in DB + in-memory state
+        await liveService.upsertParticipant(normalizedCode, socket.id, userId, guestName || 'Guest');
+
+        // Send session metadata to the joining socket
         socket.emit('lobby:joined', {
           session: {
             code: session.code,
             quizTitle: session.quiz?.title,
             status: session.status,
             settings: session.settings,
+            hostId: session.host?._id?.toString(),
+            expiresAt: session.expiresAt ? new Date(session.expiresAt).getTime() : null,
           },
         });
 
-        io.to(code).emit('lobby:activity', {
+        // If session is already active, send the participant their current question
+        const state = liveService.getInMemoryState(normalizedCode);
+        if (state && session.status === 'active') {
+          const participantState = state.participants.get(socket.id);
+          const currentIndex = participantState?.currentQuestionIndex ?? 0;
+          const q = state.questions[currentIndex];
+          if (q) {
+            const previousAnswer = participantState?.answers.get(currentIndex)?.answer || null;
+            socket.emit('quiz:question', {
+              index: currentIndex,
+              total: state.questions.length,
+              question: {
+                _id: q._id,
+                stem: q.stem,
+                options: q.options,
+                points: q.points,
+                timeLimit: session.settings.timePerQuestion,
+              },
+              startTime: now, // approximate for late joiners
+              previousAnswer,
+            });
+          }
+        }
+
+        // Broadcast updated participant list to room
+        const updatedSession = await LiveSession.findOne({ code: normalizedCode });
+        io.to(normalizedCode).emit('lobby:update', {
+          participants: updatedSession.participants,
+          count: updatedSession.participants.length,
+        });
+
+        // Broadcast join activity
+        io.to(normalizedCode).emit('lobby:activity', {
           type: 'join',
           name: guestName || 'A user',
           timestamp: new Date().toISOString(),
         });
       } catch (err) {
+        console.error('lobby:join error:', err.message);
         socket.emit('error', { message: err.message });
       }
     });
 
-    // ─── Participant Ready ────────────────────────────────────────────────────
+    // ─── lobby:ready ──────────────────────────────────────────────────────────
     socket.on('lobby:ready', async ({ code }) => {
       try {
-        const session = await LiveSession.findOne({ code });
-        if (!session) return;
-        const p = session.participants.find((p) => p.socketId === socket.id);
-        if (p) { p.isReady = true; await session.save(); }
-        io.to(code).emit('lobby:update', { participants: session.participants });
+        const normalizedCode = code?.replace(/-/g, ' ');
+        const participants = await liveService.setParticipantReady(normalizedCode, socket.id);
+        io.to(normalizedCode).emit('lobby:update', { participants, count: participants.length });
       } catch (err) {
         socket.emit('error', { message: err.message });
       }
     });
 
-    // ─── Host: Start Quiz ─────────────────────────────────────────────────────
+    // ─── host:start ───────────────────────────────────────────────────────────
     socket.on('host:start', async ({ code }) => {
       try {
-        const session = await LiveSession.findOne({ code }).populate({
-          path: 'quiz',
-          populate: { path: 'questions' },
-        });
-        if (!session) return;
+        const normalizedCode = code?.replace(/-/g, ' ');
+        const session = await LiveSession.findOne({ code: normalizedCode });
+        if (!session) return socket.emit('error', { message: 'Session not found' });
 
-        let questions = session.quiz.questions;
-        if (session.settings.shuffleQuestions) {
-          questions = [...questions].sort(() => Math.random() - 0.5);
+        // Only the host can start
+        if (session.host.toString() !== socket.userId) {
+          return socket.emit('error', { message: 'Only the host can start the quiz' });
         }
 
-        session.status = 'active';
-        session.currentQuestionIndex = 0;
-        session.questionStartTime = new Date();
-        await session.save();
-
-        const q = questions[0];
-        io.to(code).emit('quiz:question', {
-          index: 0,
-          total: questions.length,
-          question: {
-            _id: q._id,
-            stem: q.stem,
-            options: q.options,
-            points: q.points,
-            timeLimit: session.settings.timePerQuestion,
-          },
-          startTime: session.questionStartTime,
-        });
+        await liveService.startSession(normalizedCode, io);
       } catch (err) {
+        console.error('host:start error:', err.message);
         socket.emit('error', { message: err.message });
       }
     });
 
-    // ─── Participant: Submit Answer ───────────────────────────────────────────
-    socket.on('quiz:answer', async ({ code, questionId, answer, timeTaken }) => {
+    // ─── participant:next ─────────────────────────────────────────────────────
+    socket.on('participant:next', async ({ code }) => {
       try {
-        const session = await LiveSession.findOne({ code }).populate({
-          path: 'quiz',
-          populate: { path: 'questions' },
-        });
-        if (!session || session.status !== 'question') return;
+        const normalizedCode = code?.replace(/-/g, ' ');
+        const state = liveService.getInMemoryState(normalizedCode);
+        if (!state) return;
 
-        const questions = session.quiz.questions;
-        const question = questions.find((q) => q._id.toString() === questionId);
-        if (!question) return;
+        const p = state.participants.get(socket.id);
+        if (!p) return;
 
-        const isCorrect = question.correctAnswer === answer;
-        const timeBonus = Math.max(0, session.settings.timePerQuestion - timeTaken);
-        const points = isCorrect ? question.points + Math.floor(timeBonus * 2) : 0;
+        const newIndex = p.currentQuestionIndex + 1;
+        const result = await liveService.setParticipantIndex(normalizedCode, socket.id, newIndex);
 
-        const participant = session.participants.find((p) => p.socketId === socket.id);
-        if (participant) {
-          const alreadyAnswered = participant.answers.find(
-            (a) => a.questionIndex === session.currentQuestionIndex
-          );
-          if (!alreadyAnswered) {
-            participant.answers.push({
-              questionIndex: session.currentQuestionIndex,
-              answer,
-              isCorrect,
-              timeTaken,
-              points,
-            });
-            participant.score += points;
-            if (isCorrect) participant.streak += 1;
-            else participant.streak = 0;
-            await session.save();
-          }
-        }
+        if (!result) return;
 
-        socket.emit('quiz:answer_result', { isCorrect, points, correctAnswer: question.correctAnswer });
-
-        // Broadcast updated leaderboard
-        const leaderboard = session.participants
-          .map((p) => ({ name: p.guestName || 'User', score: p.score, streak: p.streak }))
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 10);
-        io.to(code).emit('quiz:leaderboard', { leaderboard });
-      } catch (err) {
-        socket.emit('error', { message: err.message });
-      }
-    });
-
-    // ─── Host: Next Question ──────────────────────────────────────────────────
-    socket.on('host:next', async ({ code }) => {
-      try {
-        const session = await LiveSession.findOne({ code }).populate({
-          path: 'quiz',
-          populate: { path: 'questions' },
-        });
-        if (!session) return;
-
-        const questions = session.quiz.questions;
-        const nextIndex = session.currentQuestionIndex + 1;
-
-        if (nextIndex >= questions.length) {
-          session.status = 'finished';
-          await session.save();
-
-          const finalLeaderboard = session.participants
-            .map((p) => ({ name: p.guestName || 'User', score: p.score, streak: p.streak }))
-            .sort((a, b) => b.score - a.score);
-
-          io.to(code).emit('quiz:finished', { leaderboard: finalLeaderboard });
+        if (result.finished) {
+          socket.emit('quiz:finished', {
+            finalLeaderboard: result.finalLeaderboard,
+            myStats: result.myStats,
+          });
           return;
         }
 
-        session.currentQuestionIndex = nextIndex;
-        session.status = 'question';
-        session.questionStartTime = new Date();
-        await session.save();
+        if (result.boundary === 'start') return; // shouldn't happen for next
 
-        const q = questions[nextIndex];
-        io.to(code).emit('quiz:question', {
-          index: nextIndex,
-          total: questions.length,
+        // Fetch timePerQuestion from session settings
+        const session = await LiveSession.findOne({ code: normalizedCode }, 'settings');
+        socket.emit('quiz:question', {
+          index: result.index,
+          total: result.total,
           question: {
-            _id: q._id,
-            stem: q.stem,
-            options: q.options,
-            points: q.points,
-            timeLimit: session.settings.timePerQuestion,
+            _id: result.question._id,
+            stem: result.question.stem,
+            options: result.question.options,
+            points: result.question.points,
+            timeLimit: session?.settings?.timePerQuestion || 30,
           },
-          startTime: session.questionStartTime,
+          startTime: Date.now(),
+          previousAnswer: result.previousAnswer,
         });
       } catch (err) {
         socket.emit('error', { message: err.message });
       }
     });
 
-    // ─── Disconnect ───────────────────────────────────────────────────────────
+    // ─── participant:prev ─────────────────────────────────────────────────────
+    socket.on('participant:prev', async ({ code }) => {
+      try {
+        const normalizedCode = code?.replace(/-/g, ' ');
+        const state = liveService.getInMemoryState(normalizedCode);
+        if (!state) return;
+
+        const p = state.participants.get(socket.id);
+        if (!p) return;
+
+        const newIndex = p.currentQuestionIndex - 1;
+        const result = await liveService.setParticipantIndex(normalizedCode, socket.id, newIndex);
+
+        if (!result || result.boundary === 'start') return; // silently ignore at first question
+
+        const session = await LiveSession.findOne({ code: normalizedCode }, 'settings');
+        socket.emit('quiz:question', {
+          index: result.index,
+          total: result.total,
+          question: {
+            _id: result.question._id,
+            stem: result.question.stem,
+            options: result.question.options,
+            points: result.question.points,
+            timeLimit: session?.settings?.timePerQuestion || 30,
+          },
+          startTime: Date.now(),
+          previousAnswer: result.previousAnswer,
+        });
+      } catch (err) {
+        socket.emit('error', { message: err.message });
+      }
+    });
+
+    // ─── quiz:answer ──────────────────────────────────────────────────────────
+    socket.on('quiz:answer', async ({ code, questionIndex, answer, timeTaken }) => {
+      try {
+        const normalizedCode = code?.replace(/-/g, ' ');
+
+        // Fetch timePerQuestion
+        const session = await LiveSession.findOne({ code: normalizedCode }, 'settings');
+        const timePerQuestion = session?.settings?.timePerQuestion || 30;
+
+        const result = liveService.recordAnswer(
+          normalizedCode,
+          socket.id,
+          questionIndex,
+          answer,
+          timeTaken,
+          timePerQuestion
+        );
+
+        if (result.error) {
+          return socket.emit('error', { message: result.error });
+        }
+
+        // Acknowledge receipt — NO correctness info during active session
+        socket.emit('quiz:answer_ack', { questionIndex: result.questionIndex });
+
+        // Recompute and broadcast leaderboard to all room members
+        const leaderboard = liveService.computeLeaderboard(normalizedCode);
+        io.to(normalizedCode).emit('quiz:leaderboard', { leaderboard });
+      } catch (err) {
+        socket.emit('error', { message: err.message });
+      }
+    });
+
+    // ─── host:end ─────────────────────────────────────────────────────────────
+    socket.on('host:end', async ({ code }) => {
+      try {
+        const normalizedCode = code?.replace(/-/g, ' ');
+        const session = await LiveSession.findOne({ code: normalizedCode });
+        if (!session) return;
+        if (session.host.toString() !== socket.userId) {
+          return socket.emit('error', { message: 'Only the host can end the session' });
+        }
+        await liveService.endSession(normalizedCode, io);
+      } catch (err) {
+        socket.emit('error', { message: err.message });
+      }
+    });
+
+    // ─── disconnect ───────────────────────────────────────────────────────────
     socket.on('disconnect', async () => {
       try {
-        if (socket.sessionCode) {
-          const session = await LiveSession.findOne({ code: socket.sessionCode });
-          if (session) {
-            session.participants = session.participants.filter(
-              (p) => p.socketId !== socket.id
-            );
+        const code = socket.sessionCode;
+        if (code) {
+          // Remove from in-memory state
+          const state = liveService.getInMemoryState(code);
+          if (state) {
+            state.participants.delete(socket.id);
+          }
+
+          // Only broadcast lobby:update while session is waiting (pre-start)
+          const session = await LiveSession.findOne({ code });
+          if (session && session.status === 'waiting') {
+            // Remove from DB participants too (pre-start only)
+            session.participants = session.participants.filter((p) => p.socketId !== socket.id);
             await session.save();
-            io.to(socket.sessionCode).emit('lobby:update', {
+
+            io.to(code).emit('lobby:update', {
               participants: session.participants,
               count: session.participants.length,
             });
+
+            io.to(code).emit('lobby:activity', {
+              type: 'leave',
+              name: 'A user',
+              timestamp: new Date().toISOString(),
+            });
           }
+          // During active session: keep DB record for reconnection matching
         }
-      } catch { /* ignore */ }
+      } catch { /* ignore disconnect errors */ }
       console.log(`🔌 Socket disconnected: ${socket.id}`);
     });
   });

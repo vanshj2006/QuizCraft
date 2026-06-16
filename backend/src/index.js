@@ -6,6 +6,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { connectDB } from './config/db.js';
 import { setupSocketHandlers } from './socket/index.js';
+import { recoverActiveSessions } from './services/liveSession.service.js';
 
 // Routes
 import authRoutes from './routes/auth.routes.js';
@@ -55,7 +56,9 @@ setupSocketHandlers(io);
 
 // Connect DB and start server
 const PORT = process.env.PORT || 5000;
-connectDB().then(() => {
+connectDB().then(async () => {
+  // Recover any active sessions that survived a restart
+  await recoverActiveSessions(io);
   httpServer.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });
